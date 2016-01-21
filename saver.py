@@ -1,11 +1,14 @@
 """
 SlackSaver, saves channel, user, data from Slack.
+Data saved in json format.  To read, cat *.json | python -m json.tool
 """
 
 from slacker import Slacker;
 from collections import deque;
 import pickle
+import json
 from time import ctime
+
 
 class SlackSaver:
     """ Slack Saver; saves slack info"""
@@ -34,8 +37,8 @@ class SlackSaver:
                         'name':     member['name'],
                         'real_name':member['real_name'],
                     }
-                with open(savefilename + '.pickle', 'wb') as f:
-                    pickle.dump([users, userlookup], f);
+                with open(savefilename + '.json', 'w') as f:
+                    json.dump([usersdict, userlookup], f);
                 error.append(0);
                 return [userlookup, error];
             else:
@@ -54,14 +57,14 @@ class SlackSaver:
             channelsdict = channels.__dict__;
             if(channelsdict['successful'] and 
                channelsdict['body']['ok']       ):
-                with open(savefilename + '.pickle', 'wb') as f:
+                with open(savefilename + '.json', 'w') as f:
                     channellookup = {};
                     for ch in channelsdict['body']['channels']:
                         channellookup[ch['id']] = {
                                 'name':     ch['name'],
                                 'purpose':  ch['purpose'],
                                 }
-                    pickle.dump([channels, channellookup], f);
+                    json.dump([channelsdict, channellookup], f);
                 error.append(0);
                 return error;  
             else:
@@ -106,8 +109,8 @@ class SlackSaver:
                rawinfo['body']['ok'] ):
                 info = rawinfo['body']['channel'];
                 break;
-        with open(savefilename + '.pickle', 'wb') as f:
-            pickle.dump([allmessages, info], f)
+        with open(savefilename + '.json', 'w') as f:
+            json.dump([info, allmessages], f)
 
         csv = [];
         for m in allmessages:
