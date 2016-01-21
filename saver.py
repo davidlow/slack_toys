@@ -3,7 +3,9 @@ SlackSaver, saves channel, user, data from Slack.
 """
 
 from slacker import Slacker;
+from collections import deque;
 import pickle
+from time import ctime
 
 class SlackSaver:
     """ Slack Saver; saves slack info"""
@@ -21,24 +23,24 @@ class SlackSaver:
         """
         users = {};
         error = [];
+        userlookup = {};
         for n in range(numtry):
             users = self.slack.users.list();
             usersdict = users.__dict__;
             if(usersdict['successful'] and
                usersdict['body']['ok']       ):
-                with open(savefilename + '.pickle', 'w') as f:
-                    userlookup = {};
-                    for member in usersdict['body']['members']:
-                        userlookup[member['id']] = {
-                                'name':     member['name'],
-                                'real_name':member['real_name'],
-                                }
+                for member in usersdict['body']['members']:
+                    userlookup[member['id']] = {
+                        'name':     member['name'],
+                        'real_name':member['real_name'],
+                    }
+                with open(savefilename + '.pickle', 'wb') as f:
                     pickle.dump([users, userlookup], f);
                 error.append(0);
-                return error;
+                return [userlookup, error];
             else:
                 error.append(usersdict['error'])
-        return error;
+        return [userlookup, error];
     
     def getallchannels(self, savefilename, numtry = 10):
         """ gets all channels and saves the raw and a dict with 
@@ -52,12 +54,12 @@ class SlackSaver:
             channelsdict = channels.__dict__;
             if(channelsdict['successful'] and 
                channelsdict['body']['ok']       ):
-                with open(savefilename + '.pickle', 'w') as f:
+                with open(savefilename + '.pickle', 'wb') as f:
                     channellookup = {};
                     for ch in channelsdict['body']['channels']:
-                        userlookup[ch['id']] = {
+                        channellookup[ch['id']] = {
                                 'name':     ch['name'],
-                                'purpose':member['purpose'],
+                                'purpose':  ch['purpose'],
                                 }
                     pickle.dump([channels, channellookup], f);
                 error.append(0);
@@ -67,11 +69,67 @@ class SlackSaver:
         return error;
 
     def getchhist(self, savefilename, channelid, tstart, tstop, 
+            userlookup,
             numtry = 10):
+        error = [];
+        times = deque();
+        times.append((tstart, tstop));
+        allmessages = [];
+        while(len(times) != 0):
+            thistime = times.popleft();
+            for n in range(numtry):
+                hist = self.slack.channels.history( channelid, 
+                        latest = thistime[1],
+                        oldest = thistime[0]
+                        ); 
+                histdict = hist.__dict__;
+                if(histdict['successful'] and 
+                   histdict['body']['ok']    ):
+                    if(histdict['body']['has_more']):
+                        times.appendleft(
+                        (thistime[0] + (thistime[1] - thistime[0])/2, 
+                         thistime[1]
+                        ))
+                        times.appendleft(
+                        (thistime[0], thistime[0] + 
+                         (thistime[1] - thistime[0])/2
+                        ))
+                    else:
+                        allmessages = (
+                                histdict['body']['messages'][::-1]  + 
+                                allmessages );
+                        break;
+        info = [];
         for n in range(numtry):
-            hist = self.slack.channels.history(channelid); #TODO: add t's
-            histdict = hist.__dict__;
-            if(histdict['successful'] and 
-               histdict['body']['ok']    ):
-                with open(savefilename + '.pickle', 'w') as f:
-                    
+            rawinfo = self.slack.channels.info(channelid).__dict__;
+            if(rawinfo['successful'] and 
+               rawinfo['body']['ok'] ):
+                info = rawinfo['body']['channel'];
+                break;
+        with open(savefilename + '.pickle', 'wb') as f:
+            pickle.dump([allmessages, info], f)
+
+        csv = [];
+        for m in allmessages:
+            name = '';
+            try:
+                name = str(userlookup[m['user']]);
+            except:
+                try:
+                    name = str(m['username']);
+                except:
+                    name = '';
+            message = '';
+            try:
+                message = str(m['text']);
+            except:
+                message = 'Type = ' + str(m['type']);
+            csv.append( ( ctime(float(m['ts'])), name, message) );
+        with open(savefilename + '.csv', 'w') as f:
+            for c in csv:
+                print(c);
+                f.write(c[0] + ', ' + c[1] + ', ' + c[2] + '\n')
+        return error;
+
+                            
+                   
